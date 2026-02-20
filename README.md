@@ -26,6 +26,8 @@ install_github("jasonleebrown/machisplin")
 [We can help you sort out issues, maybe](https://www.jasonleebrown.org/get-in-touch)
 
 ## Input Data formats
+
+NOTE: All data must be in World Geodetic System 1984 (WGS 84). Several of the functions assume this and will not work if in another projection.  I may expand this to other projections/datums in the future based on others' needs and my free time.
 To explore the data format for input data, see:
 ```markdown
 library(raster)
