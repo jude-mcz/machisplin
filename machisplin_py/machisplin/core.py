@@ -55,8 +55,8 @@ def mltps(int_values, covar_ras_path, tps=True, smooth_outputs_only=False, troub
     # Get LONG and LAT for each cell
     rows, cols = np.meshgrid(np.arange(height), np.arange(width), indexing='ij')
     lons, lats = rasterio.transform.xy(transform, rows, cols)
-    lons = np.array(lons)
-    lats = np.array(lats)
+    lons = np.array(lons).reshape(rows.shape)
+    lats = np.array(lats).reshape(cols.shape)
         
     # Stack rasters with LONG and LAT
     ras_data_full = np.concatenate([ras_data, lons[np.newaxis, :, :], lats[np.newaxis, :, :]], axis=0)
@@ -118,6 +118,14 @@ def mltps(int_values, covar_ras_path, tps=True, smooth_outputs_only=False, troub
             model_types = ['GAM', 'NN', 'MARS', 'SVM']
         else:
             model_types = ['BRT', 'GAM', 'NN', 'MARS', 'RF', 'SVM']
+            
+        # Filter models that are not available
+        available_model_types = []
+        for mt in model_types:
+            m = MACHISPLINModel(mt)
+            if m.model is not None or mt == 'GAM': # GAM is initialized in fit()
+                available_model_types.append(mt)
+        model_types = available_model_types
             
         fold_residuals = {mt: [] for mt in model_types}
         

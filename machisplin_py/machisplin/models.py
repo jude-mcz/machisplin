@@ -79,13 +79,13 @@ class MACHISPLINModel:
             # But let's keep it simple for now to follow the flow
             self.model.fit(X, y)
         else:
-            if self.model:
+            if self.model is not None:
                 self.model.fit(X, y)
             else:
                 print(f"Model {self.model_type} failed to fit.")
 
     def predict(self, X):
-        if self.model:
+        if self.model is not None:
             return self.model.predict(X)
         return None
 
