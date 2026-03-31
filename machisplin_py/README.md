@@ -39,10 +39,19 @@ import pandas as pd
 import machisplin
 
 # Load sampling data
-my_data = pd.read_csv("sampling.csv") # columns: long, lat, value1, value2, ...
+# Example using provided data in the repository
+my_data = pd.read_csv("../data-raw/sampling.csv") # columns: long, lat, value1, value2, ...
 
-# Path to high-resolution covariates raster (multi-band TIFF)
-covar_ras_path = "covariates.tif"
+# Path to high-resolution covariates raster. 
+# You can provide a path to a multi-band TIFF:
+# covar_ras_path = "covariates.tif"
+
+# OR a list of paths to single-band TIFFs (new in v0.1.1):
+covar_ras_path = [
+    "../inst/extdata/alt.tif",
+    "../inst/extdata/slope.tif",
+    "../inst/extdata/TWI.tif"
+]
 
 # Run the interpolation
 results = machisplin.mltps(int_values=my_data, covar_ras_path=covar_ras_path, tps=True)
