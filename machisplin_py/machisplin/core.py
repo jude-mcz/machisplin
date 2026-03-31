@@ -14,21 +14,49 @@ def mltps(int_values, covar_ras_path, tps=True, smooth_outputs_only=False, troub
     """
     print("IMPORTANT: all data input are assumed to be WGS1984 projection/datum")
     
-    with rasterio.open(covar_ras_path) as src:
-        ras_meta = src.meta
-        ras_bounds = src.bounds
-        n_covars = src.count
-        covar_names = [src.descriptions[i] or f"covar_{i+1}" for i in range(n_covars)]
-        # Add LONG and LAT to names
-        covar_names += ["LONG", "LAT"]
-        ras_data = src.read()
+    if isinstance(covar_ras_path, list):
+        # Handle list of single-band rasters
+        datasets = [rasterio.open(p) for p in covar_ras_path]
+        ras_meta = datasets[0].meta.copy()
+        ras_meta.update(count=len(datasets))
+        ras_bounds = datasets[0].bounds
+        n_covars = len(datasets)
+        covar_names = []
+        for i, d in enumerate(datasets):
+            name = d.descriptions[0] or os.path.basename(covar_ras_path[i]).split('.')[0]
+            covar_names.append(name)
         
+        ras_data = np.array([d.read(1) for d in datasets])
+        
+        # Use the first dataset as reference for spatial transform
+        src_ref = datasets[0]
+        transform = src_ref.transform
+        height = src_ref.height
+        width = src_ref.width
+        
+        # Close all except we might need one for transform later? 
+        # Actually we have transform, height, width now.
+        for d in datasets:
+            d.close()
+    else:
+        with rasterio.open(covar_ras_path) as src:
+            ras_meta = src.meta
+            ras_bounds = src.bounds
+            n_covars = src.count
+            covar_names = [src.descriptions[i] or f"covar_{i+1}" for i in range(n_covars)]
+            ras_data = src.read()
+            transform = src.transform
+            height = src.height
+            width = src.width
+
+    # Add LONG and LAT to names
+    covar_names += ["LONG", "LAT"]
+            
     # Get LONG and LAT for each cell
-    with rasterio.open(covar_ras_path) as src:
-        rows, cols = np.meshgrid(np.arange(src.height), np.arange(src.width), indexing='ij')
-        lons, lats = rasterio.transform.xy(src.transform, rows, cols)
-        lons = np.array(lons)
-        lats = np.array(lats)
+    rows, cols = np.meshgrid(np.arange(height), np.arange(width), indexing='ij')
+    lons, lats = rasterio.transform.xy(transform, rows, cols)
+    lons = np.array(lons)
+    lats = np.array(lats)
         
     # Stack rasters with LONG and LAT
     ras_data_full = np.concatenate([ras_data, lons[np.newaxis, :, :], lats[np.newaxis, :, :]], axis=0)
@@ -52,7 +80,7 @@ def mltps(int_values, covar_ras_path, tps=True, smooth_outputs_only=False, troub
         cols = np.clip(cols, 0, ras_data.shape[2] - 1)
         return ras_data[:, rows, cols].T
 
-    ras_val = sample_ras_full(int_values['long'].values, int_values['lat'].values, ras_data_full, src.transform)
+    ras_val = sample_ras_full(int_values['long'].values, int_values['lat'].values, ras_data_full, transform)
     
     # Merge sampled data
     my_data = pd.concat([int_values.iloc[:, :i_lyrs], pd.DataFrame(ras_val, columns=covar_names)], axis=1)
@@ -167,11 +195,10 @@ def mltps(int_values, covar_ras_path, tps=True, smooth_outputs_only=False, troub
             
             # Predict TPS on all cells (using their long/lat)
             # We need long/lat for each cell
-            with rasterio.open(covar_ras_path) as src:
-                rows, cols = np.meshgrid(np.arange(src.height), np.arange(src.width), indexing='ij')
-                lons, lats = rasterio.transform.xy(src.transform, rows, cols)
-                lons = np.array(lons).flatten()
-                lats = np.array(lats).flatten()
+            rows, cols = np.meshgrid(np.arange(height), np.arange(width), indexing='ij')
+            lons, lats = rasterio.transform.xy(transform, rows, cols)
+            lons = np.array(lons).flatten()
+            lats = np.array(lats).flatten()
                 
             X_ras_coords = np.column_stack((lons, lats))
             tps_residuals = tps_model(X_ras_coords)
@@ -188,8 +215,8 @@ def mltps(int_values, covar_ras_path, tps=True, smooth_outputs_only=False, troub
                 cols = np.clip(cols, 0, data.shape[1] - 1)
                 return data[rows, cols]
             
-            final_pred_ras = final_pred.reshape(src.height, src.width)
-            f_actual = sample_single_layer(my_data['long'].values, my_data['lat'].values, final_pred_ras, src.transform)
+            final_pred_ras = final_pred.reshape(height, width)
+            f_actual = sample_single_layer(my_data['long'].values, my_data['lat'].values, final_pred_ras, transform)
             rss_final = np.sum((y - f_actual)**2)
             rsq_final = 1 - (rss_final / tss)
             
@@ -203,10 +230,9 @@ def mltps(int_values, covar_ras_path, tps=True, smooth_outputs_only=False, troub
             rsq_final = rsq_model
             
         # Reshape final_pred back to raster shape
-        with rasterio.open(covar_ras_path) as src:
-            out_data = final_pred.reshape(src.height, src.width)
-            out_meta = src.meta.copy()
-            out_meta.update(count=1, dtype='float32')
+        out_data = final_pred.reshape(height, width)
+        out_meta = ras_meta.copy()
+        out_meta.update(count=1, dtype='float32')
             
         # Return object similar to R structure
         l = {
