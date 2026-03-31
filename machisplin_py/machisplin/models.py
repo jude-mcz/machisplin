@@ -8,6 +8,16 @@ try:
     from pyearth import Earth
 except ImportError:
     Earth = None
+
+try:
+    from sklearn.preprocessing import SplineTransformer
+    from sklearn.linear_model import LassoCV
+    from sklearn.pipeline import Pipeline
+except ImportError:
+    SplineTransformer = None
+    LassoCV = None
+    Pipeline = None
+
 from xgboost import XGBRegressor
 from sklearn.model_selection import GridSearchCV
 
@@ -51,8 +61,17 @@ class MACHISPLINModel:
             # Multivariate Adaptive Regression Splines
             if Earth:
                 self.model = Earth(max_degree=1) # max_degree=1 is often default for MARS
+            elif SplineTransformer:
+                # Use SplineTransformer + LassoCV as a modern, maintained fallback for MARS
+                # degree=1 gives piecewise linear splines, similar to MARS basis functions
+                # LassoCV performs knot selection/pruning
+                self.model = Pipeline([
+                    ('spline', SplineTransformer(degree=1, n_knots=12, knots='quantile', include_bias=False)),
+                    ('lasso', LassoCV(max_iter=10000))
+                ])
+                print("py-earth is not installed. Using SplineTransformer + LassoCV as a fallback for MARS.")
             else:
-                print("py-earth is not installed, MARS will not work.")
+                print("py-earth is not installed and SplineTransformer is not available. MARS will not work.")
         elif self.model_type == 'SVM':
             # Support Vector Machine
             self.model = SVR()
@@ -96,7 +115,26 @@ class MACHISPLINModel:
             # For GAM, importance is harder to get simply
             return None
         elif self.model_type == 'MARS':
-            if Earth and hasattr(self.model, 'feature_importances_'):
+            if Earth and isinstance(self.model, Earth):
                 # py-earth might not have feature_importances_ directly
+                if hasattr(self.model, 'feature_importances_'):
+                    return pd.Series(self.model.feature_importances_, index=X_columns)
                 return None
+            elif Pipeline and isinstance(self.model, Pipeline):
+                try:
+                    lasso = self.model.named_steps['lasso']
+                    # SplineTransformer generates basis functions.
+                    # Importance can be approximated by summing absolute coefficients per feature.
+                    coefs = np.abs(lasso.coef_)
+                    n_features_in = len(X_columns)
+                    if n_features_in > 0:
+                        n_basis_per_feature = len(coefs) // n_features_in
+                        importances = []
+                        for i in range(n_features_in):
+                            feature_coefs = coefs[i*n_basis_per_feature : (i+1)*n_basis_per_feature]
+                            importances.append(np.sum(feature_coefs))
+                        return pd.Series(importances, index=X_columns)
+                except:
+                    pass
+            return None
         return None

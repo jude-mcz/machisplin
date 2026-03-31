@@ -8,7 +8,7 @@ setup(
         "numpy",
         "pandas",
         "scipy",
-        "scikit-learn",
+        "scikit-learn>=1.0",
         "rasterio",
         "pygam",
         "matplotlib",
