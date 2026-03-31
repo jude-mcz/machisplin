@@ -24,7 +24,7 @@ MACHISPLIN is an interpolation tool for noisy multivariate data using machine le
 - pygam
 - xgboost
 - statsmodels
-- pyearth (optional for MARS)
+- pyearth (optional for MARS, provides a scikit-learn fallback if missing)
 
 ## Installation
 You can install the package using:
